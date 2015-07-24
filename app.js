@@ -4,25 +4,33 @@ var request = require('koa-request');
 var querystring = require("querystring");
 var crypto = require('crypto');
 var app = koa();
-var appid = "wx98831d7cee9dc881",secret = "34c487c0f12bdf000fab9f836215ada6",url="http://ssd3237649.xicp.net/";
+var appid = "wx57943ffa33b29537",secret = "c9720551b51463ecee299b9007e7bb7b",url="http://ssd3237649.xicp.net/";
 app.use(handlebars({
     viewsDir: "views"
 }));
 
 app.use(function*() {
-    var options = {
-        url: 'https://api.weixin.qq.com/cgi-bin/token',
+    if (this.path == "/login") {
+        var siteUrl = querystring.escape(url);
+        var redirectUrl = "https://open.weixin.qq.com/connect/oauth2/authorize?appid=" + appid + "&redirect_uri=" + siteUrl + "&response_type=code&scope=snsapi_userinfo&state=STATE#wechat_redirect";
+        this.redirect(redirectUrl);
+        return;
+    }
+    var code =this.request.query.code;
+    var options={
+        url: "https://api.weixin.qq.com/sns/oauth2/access_token",
         qs: {
-            grant_type: "client_credential",
+            grant_type: "authorization_code",
             appid: appid,
+            code:code,
             secret: secret
         }
-    };
+    }
 
     var response = yield request(options); //Yay, HTTP requests with no callbacks! 
     var info = JSON.parse(response.body);
     var token = info.access_token;
-
+    var openId =info.openid;
     var options = {
         url: 'https://api.weixin.qq.com/cgi-bin/ticket/getticket',
         qs: {
@@ -31,11 +39,17 @@ app.use(function*() {
         }
     };
 
+    var options={
+        url:"https://api.weixin.qq.com/sns/userinfo",
+        qs:{
+            access_token:token,
+            openid:openId,
+            lang:"zh_CN"
+        }
+    }
     var response = yield request(options); //Yay, HTTP requests with no callbacks! 
     var info = JSON.parse(response.body);
-    var ticket = info.ticket;
-    var data = sign(ticket,url);
-    yield this.render("index", data);
+    yield this.render("index", info);
 });
 
 function sign(ticket,url) {
@@ -60,7 +74,8 @@ function sign(ticket,url) {
     return {
         appid :appid,
         signature: signature,
-        auth: auth
+        auth: auth,
+        url: url
     }
 }
 app.listen(8080)
