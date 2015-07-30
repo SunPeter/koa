@@ -11,8 +11,11 @@
   "dependencies": {
     "co-body": "^2.0.0",
     "koa": "^0.21.0",
+    "koa-body": "^1.2.1",
     "koa-handlebars": "^0.5.7",
     "koa-request": "^1.0.0",
-    "koa-session": "^3.2.0"
+    "koa-router": "^5.1.2",
+    "koa-session": "^3.2.0",
+    "koa-static": "^1.4.9"
   }
 }

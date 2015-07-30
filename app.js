@@ -1,15 +1,28 @@
+var os = require("os")
 var koa = require("koa");
 var handlebars = require("koa-handlebars");
 var request = require('koa-request');
 var querystring = require("querystring");
 var crypto = require('crypto');
 var app = koa();
+var _static = require('koa-static');
+var router = require('koa-router')();
 var appid = "wx98831d7cee9dc881",secret = "34c487c0f12bdf000fab9f836215ada6",url="http://ssd3237649.xicp.net/";
+
+app.use(_static('./public'));
+
 app.use(handlebars({
     viewsDir: "views"
 }));
+app.use(router.routes()).use(router.allowedMethods());
 
-app.use(function*() {
+router.get('/', function *(next) {
+    var data =yield sign();
+    yield this.render("index", data);
+});
+
+
+function* sign() {
     var options = {
         url: 'https://api.weixin.qq.com/cgi-bin/token',
         qs: {
@@ -22,7 +35,6 @@ app.use(function*() {
     var response = yield request(options); //Yay, HTTP requests with no callbacks! 
     var info = JSON.parse(response.body);
     var token = info.access_token;
-
     var options = {
         url: 'https://api.weixin.qq.com/cgi-bin/ticket/getticket',
         qs: {
@@ -34,11 +46,6 @@ app.use(function*() {
     var response = yield request(options); //Yay, HTTP requests with no callbacks! 
     var info = JSON.parse(response.body);
     var ticket = info.ticket;
-    var data = sign(ticket,url);
-    yield this.render("index", data);
-});
-
-function sign(ticket,url) {
 
     var auth = {
         jsapi_ticket: ticket,
@@ -63,4 +70,8 @@ function sign(ticket,url) {
         auth: auth
     }
 }
-app.listen(8080)
+var ip=os.networkInterfaces().en0[1].address;
+
+app.listen(8080,function(){
+    console.log("server is listening "+ip+":8080");
+})
