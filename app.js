@@ -34,9 +34,17 @@ router.get('/index', function *(next) {
     }
     var _signature =getsignature(_qs);
     this.body=echostr;
-    
+
 }).post('/',function* (next){
-    console.log(this.request);
+    var req =this.request;
+    var _buf = "";
+    req.setEncoding('utf8');
+    req.on("data",function(buf){
+        _buf += buf;
+    });
+    req.on("end",function(){
+        console.log(_buf);
+    })
     this.body ="haha";
 })
 
