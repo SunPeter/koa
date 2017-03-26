@@ -1,110 +1,72 @@
-var os = require("os");
-var querystring = require("querystring");
-var koa = require("koa");
-var handlebars = require("koa-handlebars");
-var request = require('koa-request');
-var querystring = require("querystring");
-var crypto = require('crypto');
-var app = koa();
-var _static = require('koa-static');
-var router = require('koa-router')();
-var appid = "wx98831d7cee9dc881",secret = "34c487c0f12bdf000fab9f836215ada6",url="http://ssd3237649.xicp.net/",token="weixintoken";
+'use strict'
+let MIDDLEWIRES = './middleware'
+let PAGE = './page'
+let fs = require('fs')
+let path = require('path')
+let Koa = require('koa')
+let glob = require('glob')
+let compose = require("koa-compose")
+let render = require('./lib/render')
+let app = Koa()
+app.use(require('koa-trie-router')(app))
+readMiddleware(app)
+readPage(app)
+app.listen(8080)
 
-app.use(_static('./public'));
-
-app.use(handlebars({
-    viewsDir: "views"
-}));
-app.use(router.routes()).use(router.allowedMethods());
-
-router.get('/index', function *(next) {
-    var data =yield sign();
-    yield this.render("index", data);
-}).get('/',function* (next){
-    var qs =querystring.parse(this.request.querystring);
-    qs.token =token;
-    var signature =qs.signature;
-    var echostr =qs.echostr;
-    delete qs.signature;
-    delete qs.echostr;
-    var keys =Object.keys(qs).sort();
-    var _qs ="";
-    for(var i =0 ;i <keys.length;i++){
-        _qs+=qs[keys[i]];
-    }
-    var _signature =getsignature(_qs);
-    this.body=echostr;
-
-}).post('/',function* (next){
-    var req =this.request;
-    var _buf = "";
-    req.setEncoding('utf8');
-    req.on("data",function(buf){
-        _buf += buf;
-    });
-    req.on("end",function(){
-        console.log(_buf);
-    })
-    this.body ="haha";
-})
-
-function getsignature(qs){
-    var shasum = crypto.createHash('sha1');
-    shasum.update(qs);
-
-    var signature = shasum.digest('hex');
-    return signature;
+function readMiddleware(app) {
+	let dir = fs.readdirSync(path.join(__dirname, MIDDLEWIRES))
+	dir.forEach(name => {
+		let file = path.join(__dirname, MIDDLEWIRES, name)
+		app.use(require(file))
+	})
 }
-function* sign() {
-    var options = {
-        url: 'https://api.weixin.qq.com/cgi-bin/token',
-        qs: {
-            grant_type: "client_credential",
-            appid: appid,
-            secret: secret
-        }
-    };
 
-    var response = yield request(options); //Yay, HTTP requests with no callbacks! 
-    var info = JSON.parse(response.body);
-    var token = info.access_token;
-    var options = {
-        url: 'https://api.weixin.qq.com/cgi-bin/ticket/getticket',
-        qs: {
-            access_token: token,
-            type: "jsapi"
-        }
-    };
+function readPage(app) {
+	let dirs = glob.sync(path.join(__dirname, PAGE, '/**/'))
+	dirs = dirs.filter(datum => {
+		let relative = path.relative(path.join(__dirname, PAGE), datum)
+		return relative
+	})
+	let pages = dirs.map(dir => {
+		let page = {}
+		let dirName = path.relative(path.join(__dirname, PAGE), dir)
+		let controller = path.join(dir, 'index.js'), tpl = path.join(dir, `${dirName}.hbs`)
+		if (fs.existsSync(controller)) {
+			page.name = dirName
+			if (fs.existsSync(tpl)) {
+				page.tpl = tpl
+			}
+			controller = require(controller)
+			if (!Array.isArray(controller)) {
+				controller = [controller]
+			}
+			controller.forEach((datum,i) => {
+				if (!page.data) page.data = []
+				page.data.push({
+					controller: datum.controller,
+					url: datum.url,
+					method: datum.method || 'get'
+				})
+			})
+			return page
+		}
+	})
+	console.log(pages);
+	pages.forEach(page => {
+		let data = page.data
+		data.forEach(datum => {
+			let responseController = routeController(page, datum)
+			app[datum.method](datum.url, responseController)
+		})
+	})
 
-    var response = yield request(options); //Yay, HTTP requests with no callbacks! 
-    var info = JSON.parse(response.body);
-    var ticket = info.ticket;
-
-    var auth = {
-        jsapi_ticket: ticket,
-        noncestr: Math.random().toString(36).substr(2, 15),
-        timestamp: parseInt(new Date().getTime() / 1000) + '',
-        url: url
-    }
-    var temp = [];
-    for (var item in auth) {
-        var s = item + "=" + auth[item];
-        temp.push(s);
-    }
-
-    var authString = temp.join("&");
-    var shasum = crypto.createHash('sha1');
-    shasum.update(authString);
-
-    var signature = shasum.digest('hex');
-    return {
-        appid :appid,
-        signature: signature,
-        auth: auth
-    }
+	function routeController(page, datum) {
+		return function* (next) {
+			let res = yield datum.controller()
+			if (res) {
+				let html = render(fs.readFileSync(page.tpl, 'utf8'), res)
+				this.body = html
+			}
+		}
+	}
 }
-var ip=os.networkInterfaces().en0[1].address;
-
-app.listen(8080,function(){
-    console.log("server is listening "+ip+":8080");
-})
